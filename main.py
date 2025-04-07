@@ -5,10 +5,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 import requests
 from PIL import Image
 from io import BytesIO
+import os
 
 # --- Настройка страницы ---
 st.set_page_config(
-    page_title="🍿 MovieMagic Recommender",
+    page_title="🍿Фильмы",
     page_icon="🎬",
     layout="wide"
 )
@@ -48,11 +49,42 @@ load_css()
 # --- Загрузка данных ---
 @st.cache_data
 def load_data():
-    movies = pd.read_csv("movies.csv")
-    ratings = pd.read_csv("ratings.csv", names=["userId", "movieId", "rating", "timestamp"])
-    return movies, ratings
+    try:
+        movies = pd.read_csv("movies.csv")
+        ratings = pd.read_csv("ratings.csv", 
+                            names=["userId", "movieId", "rating", "timestamp"],
+                            dtype={'userId': int, 'movieId': int, 'rating': float, 'timestamp': str})
+        return movies, ratings
+    except Exception as e:
+        st.error(f"Ошибка загрузки данных: {str(e)}")
+        return None, None
 
 movies, ratings = load_data()
+
+# Проверка данных
+if not os.path.exists("ratings.csv"):
+    st.error("Файл ratings.csv не найден!")
+if ratings is None or movies is None:
+    st.stop()
+
+if ratings.empty or movies.empty:
+    st.error("Файлы данных пусты!")
+    st.stop()
+
+# Безопасное получение максимального ID
+max_user_id = int(ratings['userId'].max()) if not ratings['userId'].empty else 1
+
+try:
+    user_id = st.number_input(
+        "Ваш User ID", 
+        min_value=1, 
+        max_value=max_user_id,
+        value=min(1, max_user_id),
+        help=f"Доступные ID: от 1 до {max_user_id}"
+    )
+except Exception as e:
+    st.error(f"Ошибка ввода: {str(e)}")
+    st.stop()
 
 # --- Получение постера фильма (через OMDb API) ---
 def get_poster(title):
