@@ -52,6 +52,10 @@ def load_data():
     try:
         movies = pd.read_csv("movies.csv")
         
+        movies['genres'] = movies['genres'].apply(
+        lambda x: [x] if isinstance(x, str) and '|' not in x else x.split('|') if isinstance(x, str) else []
+        )
+        
         ratings = pd.read_csv(
             "ratings.csv",
             header=None,  # Явно указываем, что заголовков нет
