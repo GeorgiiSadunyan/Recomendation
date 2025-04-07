@@ -11,7 +11,7 @@ st.title("🍿 Рекомендации фильмов")
 @st.cache_data
 def load_data():
     movies = pd.read_csv("movies.csv")
-    # Читаем ratings.csv, явно указывая типы колонок и пропуская строку с заголовками
+
     ratings = pd.read_csv("ratings.csv", 
                          names=["userId", "movieId", "rating", "timestamp"],
                          header=None,
@@ -100,13 +100,7 @@ with tab2:
         for i, row in filtered_movies.iterrows():
             st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
 
-# Дополнительная информация
-st.sidebar.markdown("### О системе")
-st.sidebar.write("""
-Используется коллаборативная фильтрация:
-1. Находит пользователей с похожими вкусами
-2. Рекомендует фильмы, которые они высоко оценили
-""")
+
 st.sidebar.write(f"Всего фильмов: {len(movies)}")
 st.sidebar.write(f"Всего оценок: {len(ratings)}")
 st.sidebar.write(f"Уникальных пользователей: {user_movie_matrix.shape[0]}")
