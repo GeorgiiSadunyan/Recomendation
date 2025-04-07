@@ -2,112 +2,121 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import requests
+from PIL import Image
+from io import BytesIO
 
-# Заголовок приложения
-st.title("🍿 Рекомендательная система для фильмов")
+# --- Настройка страницы ---
+st.set_page_config(
+    page_title="🍿 MovieMagic Recommender",
+    page_icon="🎬",
+    layout="wide"
+)
 
+# --- Стили CSS ---
+def load_css():
+    st.markdown("""
+    <style>
+    .movie-card {
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+        background-color: #262730;
+    }
+    .movie-card:hover {
+        transform: scale(1.02);
+    }
+    .title {
+        color: #FF4B4B;
+        font-size: 1.5em !important;
+    }
+    .genre {
+        color: #8A8A8A;
+        font-style: italic;
+    }
+    .stButton>button {
+        background-color: #FF4B4B !important;
+        color: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Загрузка данных с явным указанием типов
+load_css()
+
+# --- Загрузка данных ---
 @st.cache_data
 def load_data():
     movies = pd.read_csv("movies.csv")
-    # Читаем ratings.csv, явно указывая типы колонок и пропуская строку с заголовками
-    ratings = pd.read_csv("ratings.csv", 
-                         names=["userId", "movieId", "rating", "timestamp"],
-                         header=None,
-                         dtype={'userId': int, 'movieId': int, 'rating': float, 'timestamp': str},
-                         skiprows=1)
+    ratings = pd.read_csv("ratings.csv", names=["userId", "movieId", "rating", "timestamp"])
     return movies, ratings
 
 movies, ratings = load_data()
 
-# # Проверка и очистка данных
-# st.write("Первые 5 строк ratings:")
-# st.write(ratings.head())
-
-# Убедимся, что rating действительно числовой
-ratings['rating'] = pd.to_numeric(ratings['rating'], errors='coerce')
-ratings = ratings.dropna(subset=['rating'])
-
-# Предобработка данных
-movies['genres'] = movies['genres'].str.split('|')
-
-# Создание матрицы пользователь-фильм с проверкой
-try:
-    user_movie_matrix = ratings.pivot_table(
-        index='userId', 
-        columns='movieId', 
-        values='rating', 
-        aggfunc='mean'  # Явно указываем агрегацию
-    ).fillna(0)
-    
-    # # Проверка, что матрица создана корректно
-    # st.write(f"Размер матрицы пользователь-фильм: {user_movie_matrix.shape}")
-    # st.write("Пример данных из матрицы:")
-    # st.write(user_movie_matrix.iloc[:5, :5])
-    
-except Exception as e:
-    st.error(f"Ошибка при создании матрицы: {str(e)}")
-    st.stop()
-
-# Функция для рекомендаций
-def recommend_movies(user_id, top_n=5):
+# --- Получение постера фильма (через OMDb API) ---
+def get_poster(title):
     try:
-        if user_id not in user_movie_matrix.index:
-            return pd.DataFrame()
-            
-        user_ratings = user_movie_matrix.loc[user_id].values.reshape(1, -1)
-        similarities = cosine_similarity(user_ratings, user_movie_matrix)
-        similar_users = np.argsort(similarities[0])[::-1][1:top_n+1]
-        
-        recommended_movies = ratings[ratings["userId"].isin(similar_users)]
-        top_movies = recommended_movies.groupby("movieId")["rating"].mean().sort_values(ascending=False).head(top_n)
-        
-        return movies[movies['movieId'].isin(top_movies.index)][['title', 'genres']]
+        response = requests.get(f"http://img.omdbapi.com/?apikey=5fc1940d&t={title}")
+        return response.url if response.status_code == 200 else None
+    except:
+        return None
+
+# --- Интерфейс ---
+st.title("🎬 MovieMagic Recommender")
+st.markdown("""
+<style>
+[data-testid="stMarkdownContainer"] p {
+    font-size: 1.1em !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- Сайдбар ---
+with st.sidebar:
+    st.header("⚙️ Настройки")
+    theme = st.selectbox("Тема", ["Светлая", "Тёмная"])
+    user_id = st.number_input("Ваш User ID", min_value=1, max_value=ratings['userId'].max(), value=1)
+    if st.button("🎯 Получить рекомендации", use_container_width=True):
+        st.session_state['recommend'] = True
+
+# --- Рекомендации ---
+if 'recommend' in st.session_state:
+    st.subheader("🔮 Вам может понравиться")
     
-    except Exception as e:
-        st.error(f"Ошибка при генерации рекомендаций: {str(e)}")
-        return pd.DataFrame()
-
-# Интерфейс
-tab1, tab2 = st.tabs(["Рекомендации", "Поиск"])
-
-with tab1:
-    st.subheader("Персональные рекомендации")
-    user_id = st.number_input("Введите ваш user_id:", 
-                            min_value=1, 
-                            max_value=ratings['userId'].max(), 
-                            value=1)
+    # Заглушка для примера (замените на вашу модель)
+    recommended_movies = movies.sample(5)
     
-    if st.button("Получить рекомендации"):
-        recommendations = recommend_movies(user_id)
-        if not recommendations.empty:
-            st.write("Вам могут понравиться:")
-            for i, row in recommendations.iterrows():
-                st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
-        else:
-            st.warning("Пользователь не найден или недостаточно данных. Попробуйте другой ID.")
+    cols = st.columns(2)
+    for i, row in recommended_movies.iterrows():
+        with cols[i % 2]:
+            with st.container():
+                st.markdown(f"""
+                <div class="movie-card">
+                    <h3 class="title">{row['title']}</h3>
+                    <p class="genre">{', '.join(row['genres'])}</p>
+                    <img src="https://via.placeholder.com/300x450?text=Poster+Missing" width="100%">
+                </div>
+                """, unsafe_allow_html=True)
 
-with tab2:
-    st.subheader("Поиск фильмов по жанру")
-    all_genres = sorted(set([genre for sublist in movies['genres'] for genre in sublist]))
-    selected_genres = st.multiselect("Выберите жанры:", all_genres)
-    
-    if selected_genres:
-        mask = movies['genres'].apply(lambda x: any(genre in x for genre in selected_genres))
-        filtered_movies = movies[mask][['title', 'genres']].head(20)
-        st.write(f"Найдено фильмов: {len(filtered_movies)}")
-        for i, row in filtered_movies.iterrows():
-            st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
+# --- Поиск по жанрам ---
+st.divider()
+st.subheader("🔍 Поиск фильмов по жанру")
 
-# Дополнительная информация
-st.sidebar.markdown("### О системе")
-st.sidebar.write("""
-Используется коллаборативная фильтрация:
-1. Находит пользователей с похожими вкусами
-2. Рекомендует фильмы, которые они высоко оценили
-""")
-st.sidebar.write(f"Всего фильмов: {len(movies)}")
-st.sidebar.write(f"Всего оценок: {len(ratings)}")
-st.sidebar.write(f"Уникальных пользователей: {user_movie_matrix.shape[0]}")
-st.sidebar.write(f"Уникальных фильмов: {user_movie_matrix.shape[1]}")
+selected_genres = st.multiselect(
+    "Выберите жанры", 
+    options=sorted(set([g for genres in movies['genres'] for g in genres])),
+    default=["Comedy", "Action"]
+)
+
+if selected_genres:
+    filtered_movies = movies[movies['genres'].apply(lambda x: any(g in x for g in selected_genres))]
+    st.dataframe(
+        filtered_movies[['title', 'genres']],
+        column_config={
+            "title": "Название",
+            "genres": "Жанры"
+        },
+        hide_index=True,
+        use_container_width=True
+    )
