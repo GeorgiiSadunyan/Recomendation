@@ -51,12 +51,24 @@ load_css()
 def load_data():
     try:
         movies = pd.read_csv("movies.csv")
-        ratings = pd.read_csv("ratings.csv", 
-                            names=["userId", "movieId", "rating", "timestamp"],
-                            dtype={'userId': int, 'movieId': int, 'rating': float, 'timestamp': str})
+        
+        ratings = pd.read_csv(
+            "ratings.csv",
+            header=None,  # Явно указываем, что заголовков нет
+            names=["userId", "movieId", "rating", "timestamp"],
+            dtype={'userId': int, 'movieId': int, 'rating': float, 'timestamp': str},
+            skiprows=1
+        )
+        
+        # Проверка на пустые данные
+        if ratings.empty or movies.empty:
+            st.error("Один из файлов пуст!")
+            return None, None
+            
         return movies, ratings
+        
     except Exception as e:
-        st.error(f"Ошибка загрузки данных: {str(e)}")
+        st.error(f"Критическая ошибка загрузки: {str(e)}")
         return None, None
 
 movies, ratings = load_data()
