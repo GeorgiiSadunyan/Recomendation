@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import os
 
+
 st.title("🍿 Рекомендации фильмов")
 NEW_RATINGS_FILE = "new_ratings.csv"
+
 
 # Загрузка данных с явным указанием типов
 @st.cache_data
@@ -17,12 +19,15 @@ def load_data():
                          skiprows=1)
     return movies, ratings
 
+
 movies, ratings = load_data()
+
 
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
 if 'onboarding' not in st.session_state:
     st.session_state.onboarding = False
+
 
 # Убедимся, что rating действительно числовой
 ratings['rating'] = pd.to_numeric(ratings['rating'], errors='coerce')
@@ -46,6 +51,8 @@ def save_ratings(user_id, ratings_dict):
     # Записываем в файл (дозапись в конец)
     new_data.to_csv('new_ratings.csv', mode='a', header=not os.path.exists('new_ratings.csv'), index=False)
     
+    
+    
 # Создание матрицы пользователь-фильм с проверкой
 try:
     user_movie_matrix = ratings.pivot_table(
@@ -59,6 +66,8 @@ except Exception as e:
     st.error(f"Ошибка при создании матрицы: {str(e)}")
     st.stop()
 
+
+
 # Генерация ID
 def generate_user_id():
     existing_ids = set(ratings['userId'].unique())
@@ -66,6 +75,7 @@ def generate_user_id():
         new_ratings = pd.read_csv(NEW_RATINGS_FILE)
         existing_ids.update(new_ratings['userId'].unique())
     return max(existing_ids) + 1 if existing_ids else 1
+
 
 
 # Функция для рекомендаций (5 случайных фильмов)
@@ -76,6 +86,8 @@ def recommend_movies(user_id, top_n=5):
     except Exception as e:
         st.error(f"Ошибка при генерации рекомендаций: {str(e)}")
         return pd.DataFrame()
+   
+   
     
 # Профиль
 def show_user_profile(user_id):
@@ -108,6 +120,8 @@ with tab1:
         else:
             st.warning("Пользователь не найден или недостаточно данных. Попробуйте другой ID.")
 
+
+
 with tab2:
     st.subheader("Поиск фильмов по жанру")
     all_genres = sorted(set([genre for sublist in movies['genres'] for genre in sublist]))
@@ -120,6 +134,8 @@ with tab2:
         for i, row in filtered_movies.iterrows():
             st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
 
+
+
 with tab3:
     show_user_profile(user_id)
     
@@ -130,6 +146,8 @@ with tab3:
 if 'new_user_ratings' not in st.session_state:
     st.session_state.new_user_ratings = pd.DataFrame(columns=['userId', 'movieId', 'rating'])
 
+
+
 def add_new_user():
     new_id = generate_user_id()
     st.session_state.current_user = new_id
@@ -137,11 +155,14 @@ def add_new_user():
     st.session_state.onboarding = True
     return new_id
 
+
 # Кнопка в сайдбаре
 if st.sidebar.button("➕ Новый пользователь"):
     new_id = add_new_user()
     st.success(f"Создан пользователь ID: {new_id}")
     st.session_state.onboarding = True  # Флаг для onboarding
+ 
+ 
     
 # Выбор 10 фильмов для нового пользователя
 def onboarding_step(user_id):
@@ -173,6 +194,7 @@ def onboarding_step(user_id):
             st.session_state.onboarding = False
             st.rerun()  
             
+ 
            
 # Статус для Сайдбара 
 def get_current_stats():
