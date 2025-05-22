@@ -21,7 +21,7 @@ def load_data():
 
 
 movies, ratings = load_data()
-
+print(ratings.head())
 
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
@@ -141,21 +141,22 @@ def show_user_profile(user_id):
         st.warning("У вас пока нет оценённых фильмов.")
 
 
-
 # Интерфейс
 tab1, tab2, tab3 = st.tabs(["Рекомендации", "Поиск", "Профиль"])
 
+
 with tab1:
     st.subheader("Персональные рекомендации")
+    new_ratings = pd.read_csv(NEW_RATINGS_FILE)
     user_id = st.number_input("Введите ваш user_id:", 
                             min_value=1, 
-                            max_value=ratings['userId'].max(), 
+                            max_value=new_ratings['userId'].max(),
                             value=1)
     
     if st.button("Получить рекомендации"):
         recommendations = recommend_movies(user_id)
         if not recommendations.empty:
-            st.write("Вам могут понравиться:")
+            st.write(f"5 рекомендаций для пользователя {user_id}:")
             for i, row in recommendations.iterrows():
                 st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
         else:
@@ -264,3 +265,6 @@ stats = get_current_stats()
 st.sidebar.metric("👥 Пользователей", stats["users_total"])
 st.sidebar.metric("🎬 Фильмов", stats["movies_total"])
 st.sidebar.metric("⭐ Оценок", stats["ratings_total"])
+
+
+
