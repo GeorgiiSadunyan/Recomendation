@@ -81,12 +81,53 @@ def generate_user_id():
 # Функция для рекомендаций (5 случайных фильмов)
 def recommend_movies(user_id, top_n=5):
     try:
-        return movies.sample(5)
+        # return movies.sample(5)
+        # Объединяем все рейтинги (старые и новые)
+        all_ratings = pd.concat([ratings, pd.read_csv(NEW_RATINGS_FILE)] if os.path.exists(NEW_RATINGS_FILE) else ratings)
+        
+        # 1. Собираем данные пользователя
+        user_ratings = all_ratings[all_ratings['userId'] == user_id]
+        
+        # Fallback для новых пользователей
+        if user_ratings.empty:
+            return get_popular_movies(top_n)
+        
+        # 2. Вычисляем средний рейтинг для фильмов
+        movie_stats = all_ratings.groupby('movieId').agg(
+            avg_rating=('rating', 'mean'),
+            num_ratings=('rating', 'count')
+        ).reset_index()
+        
+        # 3. Определяем любимые жанры пользователя
+        user_movies = user_ratings.merge(movies, on='movieId')
+        liked_genres = list(set([genre for sublist in user_movies['genres'] for genre in sublist]))
+        
+        # 4. Фильтруем непросмотренные фильмы из любимых жанров
+        candidates = movies[
+            (~movies['movieId'].isin(user_ratings['movieId'])) &
+            (movies['genres'].apply(lambda x: any(g in x for g in liked_genres)))
+        ]
+        
+        # 5. Добавляем метрики популярности и сортируем
+        recommendations = candidates.merge(movie_stats, on='movieId')
+        recommendations = recommendations.sort_values(
+            by=['num_ratings', 'avg_rating'], 
+            ascending=[False, False]
+        )
+        
+        return recommendations.head(top_n)
     
     except Exception as e:
         st.error(f"Ошибка при генерации рекомендаций: {str(e)}")
         return pd.DataFrame()
-   
+ 
+ 
+  # Вспомогательная функция для популярных фильмов
+def get_popular_movies(top_n):
+    return movies.merge(
+        ratings.groupby('movieId')['rating'].count().reset_index(name='num_ratings'),
+        on='movieId'
+    ).sort_values('num_ratings', ascending=False).head(top_n)
    
     
 # Профиль
