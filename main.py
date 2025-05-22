@@ -21,7 +21,7 @@ def load_data():
 
 
 movies, ratings = load_data()
-print(ratings.head())
+
 
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
@@ -37,8 +37,6 @@ ratings = ratings.dropna(subset=['rating'])
 movies['genres'] = movies['genres'].str.split('|')
 
 
-
-
 # Функция сохранения
 def save_ratings(user_id, ratings_dict):
     """Простое сохранение оценок в CSV"""
@@ -50,7 +48,6 @@ def save_ratings(user_id, ratings_dict):
     
     # Записываем в файл (дозапись в конец)
     new_data.to_csv('new_ratings.csv', mode='a', header=not os.path.exists('new_ratings.csv'), index=False)
-    
     
     
 # Создание матрицы пользователь-фильм с проверкой
@@ -177,17 +174,14 @@ with tab2:
             st.write(f"- **{row['title']}** ({', '.join(row['genres'])})")
 
 
-
 with tab3:
     show_user_profile(user_id)
     
-
-
+    
 # Добавление нового пользователя  
 # Глобально инициализируем
 if 'new_user_ratings' not in st.session_state:
     st.session_state.new_user_ratings = pd.DataFrame(columns=['userId', 'movieId', 'rating'])
-
 
 
 def add_new_user():
@@ -203,8 +197,7 @@ if st.sidebar.button("➕ Новый пользователь"):
     new_id = add_new_user()
     st.success(f"Создан пользователь ID: {new_id}")
     st.session_state.onboarding = True  # Флаг для onboarding
- 
- 
+
     
 # Выбор 10 фильмов для нового пользователя
 def onboarding_step(user_id):
@@ -236,8 +229,7 @@ def onboarding_step(user_id):
             st.session_state.onboarding = False
             st.rerun()  
             
- 
-           
+  
 # Статус для Сайдбара 
 def get_current_stats():
     # Объединяем все оценки
@@ -256,15 +248,14 @@ def get_current_stats():
         "users_total": all_ratings['userId'].nunique(),
     }
 
+
 # Проверяем onboarding-режим
 if st.session_state.onboarding:  # Вместо hasattr
     onboarding_step(st.session_state.current_user)
     st.stop()
     
+#боковая панель
 stats = get_current_stats()
 st.sidebar.metric("👥 Пользователей", stats["users_total"])
 st.sidebar.metric("🎬 Фильмов", stats["movies_total"])
 st.sidebar.metric("⭐ Оценок", stats["ratings_total"])
-
-
-
