@@ -1,3 +1,4 @@
+from collections import defaultdict
 import streamlit as st
 import pandas as pd
 import os
@@ -74,12 +75,10 @@ def generate_user_id():
     return max(existing_ids) + 1 if existing_ids else 1
 
 
-
-# Функция для рекомендаций (5 случайных фильмов)
+#функция рекомендаций
 def recommend_movies(user_id, top_n=5):
     try:
-        # return movies.sample(5)
-        # Объединяем все рейтинги (старые и новые)
+        # Объединяем все рейтинги
         all_ratings = pd.concat([ratings, pd.read_csv(NEW_RATINGS_FILE)] if os.path.exists(NEW_RATINGS_FILE) else ratings)
         
         # 1. Собираем данные пользователя
@@ -89,33 +88,59 @@ def recommend_movies(user_id, top_n=5):
         if user_ratings.empty:
             return get_popular_movies(top_n)
         
-        # 2. Вычисляем средний рейтинг для фильмов
+        # 2. Взвешивание жанров
+        user_movies = user_ratings.merge(movies, on='movieId')
+        genre_weights = defaultdict(float)
+        for _, row in user_movies.iterrows():
+            for genre in row['genres']:
+                genre_weights[genre] += row['rating']  # Вес = сумма оценок
+        
+        # 3. Байесовский рейтинг
+        C = all_ratings['rating'].mean()  # Средний рейтинг по всем фильмам
+        m = all_ratings['movieId'].value_counts().quantile(0.7)  # Порог популярности
+        
         movie_stats = all_ratings.groupby('movieId').agg(
             avg_rating=('rating', 'mean'),
             num_ratings=('rating', 'count')
         ).reset_index()
         
-        # 3. Определяем любимые жанры пользователя
-        user_movies = user_ratings.merge(movies, on='movieId')
-        liked_genres = list(set([genre for sublist in user_movies['genres'] for genre in sublist]))
+        # Формула байесовского среднего
+        movie_stats['bayesian_rating'] = (
+            (movie_stats['num_ratings'] / (movie_stats['num_ratings'] + m)) * movie_stats['avg_rating'] + 
+            (m / (movie_stats['num_ratings'] + m)) * C
+        )
         
-        # 4. Фильтруем непросмотренные фильмы из любимых жанров
+        # 4. Фильтрация кандидатов (оригинальная логика)
         candidates = movies[
-            (~movies['movieId'].isin(user_ratings['movieId'])) &
-            (movies['genres'].apply(lambda x: any(g in x for g in liked_genres)))
+            (~movies['movieId'].isin(user_ratings['movieId'])) & 
+            (movies['genres'].apply(lambda x: any(g in x for g in genre_weights.keys())))
         ]
         
-        # 5. Добавляем метрики популярности и сортируем
+        # 5. Гибридный скоринг (новое)
         recommendations = candidates.merge(movie_stats, on='movieId')
-        recommendations = recommendations.sort_values(
-            by=['num_ratings', 'avg_rating'], 
-            ascending=[False, False]
+        
+        # Рассчет жанрового веса для каждого фильма
+        recommendations['genre_score'] = recommendations['genres'].apply(
+            lambda x: sum(genre_weights.get(g, 0) for g in x)
         )
+        
+        # Нормализация показателей
+        recommendations['bayesian_norm'] = (recommendations['bayesian_rating'] - recommendations['bayesian_rating'
+            ].min()) / (recommendations['bayesian_rating'].max() - recommendations['bayesian_rating'].min())
+        
+        recommendations['genre_norm'] = (recommendations['genre_score'] - recommendations['genre_score'
+            ].min()) / (recommendations['genre_score'].max() - recommendations['genre_score'].min())
+        
+        # Комбинированный рейтинг (60% байесовский + 40% жанры)
+        recommendations['final_score'] = 0.6 * recommendations['bayesian_norm'] + 0.4 * recommendations['genre_norm']
+        
+        # Сортировка по комбинированному рейтингу
+        recommendations = recommendations.sort_values('final_score', ascending=False)
         
         return recommendations.head(top_n)
     
     except Exception as e:
-        st.error(f"Ошибка при генерации рекомендаций: {str(e)}")
+        st.error(f"Ошибка: {str(e)}")
         return pd.DataFrame()
  
  
