@@ -48,7 +48,16 @@ def save_ratings(user_id, ratings_dict):
     })
     
     # Записываем в файл (дозапись в конец)
-    new_data.to_csv('new_ratings.csv', mode='a', header=not os.path.exists('new_ratings.csv'), index=False)
+    # new_data.to_csv('new_ratings.csv', mode='a', header=not os.path.exists('new_ratings.csv'), index=False)
+    
+    # Проверка существования файла для корректного заголовка
+    file_exists = os.path.exists(NEW_RATINGS_FILE)
+    
+    # Запись данных и синхронизация внутри одного контекста
+    with open(NEW_RATINGS_FILE, 'a') as f:
+        new_data.to_csv(f, mode='a', header=not file_exists, index=False)
+        f.flush()
+        os.fsync(f.fileno())
     
     
 # Создание матрицы пользователь-фильм с проверкой
@@ -63,7 +72,6 @@ try:
 except Exception as e:
     st.error(f"Ошибка при создании матрицы: {str(e)}")
     st.stop()
-
 
 
 # Генерация ID
@@ -83,10 +91,6 @@ def recommend_movies(user_id, top_n=5):
         
         # 1. Собираем данные пользователя
         user_ratings = all_ratings[all_ratings['userId'] == user_id]
-        
-        # Fallback для новых пользователей
-        if user_ratings.empty:
-            return get_popular_movies(top_n)
         
         # 2. Взвешивание жанров
         user_movies = user_ratings.merge(movies, on='movieId')
@@ -142,23 +146,52 @@ def recommend_movies(user_id, top_n=5):
     except Exception as e:
         st.error(f"Ошибка: {str(e)}")
         return pd.DataFrame()
- 
- 
-  # Вспомогательная функция для популярных фильмов
-def get_popular_movies(top_n):
-    return movies.merge(
-        ratings.groupby('movieId')['rating'].count().reset_index(name='num_ratings'),
-        on='movieId'
-    ).sort_values('num_ratings', ascending=False).head(top_n)
    
     
 # Профиль
 def show_user_profile(user_id):
+    
+    movies, ratings = load_data()
+    movies['genres'] = movies['genres'].str.split('|')
+    
+    ratings = pd.concat([ratings, pd.read_csv(NEW_RATINGS_FILE)] 
+                        if os.path.exists(NEW_RATINGS_FILE) else ratings)
+    
     user_ratings = ratings[ratings['userId'] == user_id]
+    
     if not user_ratings.empty:
         st.subheader(f"Ваши любимые фильмы (UserID: {user_id})")
-        liked_movies = user_ratings.merge(movies, on='movieId').sort_values('rating', ascending=False)
-        st.dataframe(liked_movies[['title', 'genres', 'rating']].head(10))
+        liked_movies = user_ratings.merge(
+            movies, 
+            on='movieId',
+            how='inner')
+        
+        if liked_movies.empty:
+            st.error("Ошибка: некорректные данные в оценках.")
+            return
+        
+        genre_weights = defaultdict(float) #вес жанра
+        for _, row in liked_movies.iterrows():
+            for genre in row['genres']:
+                genre_weights[genre] += row['rating']
+        
+        liked_movies['genre_score'] = liked_movies['genres'].apply(
+            lambda x: sum(genre_weights.get(g, 0) for g in x)
+        )
+        
+        # Сортировка: сначала по оценке (убывание), затем по genre_score (убывание)
+        liked_movies = liked_movies.sort_values(
+            ['rating', 'genre_score'], 
+            ascending=[False, False]
+        )
+        
+        st.dataframe(liked_movies[['title', 'genres', 'rating']].head(10),
+                     hide_index=True,
+                     column_config={
+                         "title": "Название фильма",
+                         "genres": "Жанр",
+                         "rating": "Оценка"
+                     })
     else:
         st.warning("У вас пока нет оценённых фильмов.")
 
@@ -226,18 +259,24 @@ if st.sidebar.button("➕ Новый пользователь"):
     
 # Выбор 10 фильмов для нового пользователя
 def onboarding_step(user_id):
-    global ratings 
-    st.subheader("Шаг 1/1: Оцените 10 фильмов")
+    st.cache_data.clear()
+    # Перезагружаем данные
+    movies, ratings = load_data()
+    movies['genres'] = movies['genres'].str.split('|')
+
+    st.subheader("Пожалуйста, оцените 10 фильмов")
     sample_movies = movies.sample(10)
+    
     
     with st.form("onboarding_form"):
         ratings_input = {}
         for _, row in sample_movies.iterrows():
-            ratings_input[row['movieId']] = st.slider(
+            rating = st.slider(
                 f"Фильм: {row['title']} ({', '.join(row['genres'])})",
                 0.5, 5.0, 3.0, step=0.5,
-                key=f"rate_{row['movieId']}"
+                key=f"rate_{user_id}_{row['movieId']}"
             )
+            ratings_input[row['movieId']] = rating
         
         if st.form_submit_button("💾Сохранить оценки"):
             save_ratings(st.session_state.current_user, ratings_input)
@@ -249,10 +288,11 @@ def onboarding_step(user_id):
                 'rating': list(ratings_input.values())
             })
             ratings = pd.concat([ratings, new_ratings], ignore_index=True)
-            
+                        
             st.success("Оценки сохранены!")
             st.session_state.onboarding = False
-            st.rerun()  
+            st.cache_data.clear()
+            st.rerun() 
             
   
 # Статус для Сайдбара 
@@ -275,7 +315,7 @@ def get_current_stats():
 
 
 # Проверяем onboarding-режим
-if st.session_state.onboarding:  # Вместо hasattr
+if st.session_state.onboarding:
     onboarding_step(st.session_state.current_user)
     st.stop()
     
